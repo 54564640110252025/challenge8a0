@@ -1,6 +1,6 @@
-# 🛡️ WolfGuard Antivírus — README Técnico & Operacional (Completo)
+# 🛡️ WolfGuard Antivírus
 
-> **Status:** Confidencial · Documento técnico de análise e README para uso no GitHub  
+> **Status:** Confidencial · Documento técnico 
 > **Data:** 04 de outubro de 2025  
 > **Compilado por:** WolfGuard  
 > **Website Oficial:** https://wolfguard.com.br  
