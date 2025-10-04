@@ -11,7 +11,6 @@
   <img src="https://img.shields.io/badge/Windows-10%2F11%20x64-blue" alt="Windows 10/11 x64">
   <img src="https://img.shields.io/badge/estado-Ativo-success" alt="Status">
   <img src="https://img.shields.io/badge/antiransomware-8%E2%80%930-brightgreen" alt="Antiransomware 8-0">
-  <img src="https://wolfguard.com.br/#download" alt="Installer">
 </p>
 
 ---
