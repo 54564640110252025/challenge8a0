@@ -16,13 +16,16 @@ try:
     import win32con, win32gui, win32api, win32process
 except:
     win32con=win32gui=win32api=win32process=None
+try:
+    import hashlib
+except:
+    hashlib = None
 
 APP_NAME = "WolfGuard"
 ICON_FILE = os.path.join(os.path.dirname(sys.argv[0]), "1.ico")
 CFG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "WolfGuard")
 CFG_FILE = os.path.join(CFG_DIR, "antiransom_config.json")
 
-# Whitelist expandida e otimizada
 WHITELIST_EXE_NAMES = {
     "wolfguard.exe", "wolfguard1.exe", "wolfguard_updater.exe", "wolfguard2.exe",
     "explorer.exe", "taskmgr.exe", "regedit.exe", "mmc.exe", 
@@ -35,13 +38,53 @@ WHITELIST_EXE_NAMES = {
     "ntoskrnl.exe", "csrss.exe", "sihost.exe", "dllhost.exe",
     "spoolsv.exe", "searchhost.exe", "fontdrvhost.exe", 
     "system", "smss.exe", "dwm.exe", "audiodg.exe",
-    "vscode.exe", "code.exe", "pycharm64.exe", "idea64.exe"
+    "vscode.exe", "code.exe", "pycharm64.exe", "idea64.exe",
+    "cortana.exe", "windowsstore.exe", "microsoftstore.exe", "winstore.exe",
+    "windowsapphost.exe", "runtimebroker.exe", "shellexperiencehost.exe",
+    "windowsinternal.composableshell.experiences.textinput.inputapp.exe",
+    "applicationframehost.exe", "calculator.exe", "calendar.exe",
+    "photos.exe", "microsoftedge.exe", "microsoftedgecp.exe",
+    "microsoftedgebchost.exe", "systemeventbroker.exe", "smartscreen.exe",
+    "securityhealthservice.exe", "securityhealthhost.exe", "searchui.exe",
+    "lockapp.exe", "microsoft.photos.exe", "yourphone.exe", "gamebarftedriver.exe",
+    "gamebar.exe", "xamlhost.exe", "settingsynchost.exe", "officehub.exe",
+    "skypeapp.exe", "skypehost.exe", "skypebridge.exe", "teams.exe",
+    "microsoft.vclibs.140.00.exe", "microsoft.windowscommunicationsapps.exe",
+    "onedrive.exe", "onedrivesetup.exe", "calculator.exe", "calendar.exe",
+    "clock.exe", "alarms.exe", "sticky.exe", "maps.exe", "feedback.exe",
+    "getstarted.exe", "groove.exe", "mixedreality.exe", "3dviewer.exe",
+    "onenote.exe", "paint.exe", "paint3d.exe", "people.exe", "remote.exe",
+    "stepsrecorder.exe", "stickynotesapp.exe", "windowscamera.exe", "xbox.exe",
+    "xboxgameoverlay.exe", "xboxapp.exe", "xboxliveauth.exe", 
+    "mongod.exe", "l-connect-service.exe", "cpu server.exe", "cefsharp.browsersubprocess.exe",
+    "rise mode temp cpu driver r2.1.exe", "sendtemp.exe"
+}
+
+SPECIFIC_TRUSTED_PATHS = {
+    os.path.normpath(r"C:\Program Files\Lian-Li\L-Connect 3\L-Connect-Service.exe"),
+    os.path.normpath(r"C:\Program Files\MongoDB\Server\8.0\bin\mongod.exe"),
+    os.path.normpath(r"C:\Program Files (x86)\Rise Mode Temp CPU Driver R2.1\CPU Server.exe"),
+    os.path.normpath(r"C:\Program Files\Lian-Li\L-Connect 3\CefSharp.BrowserSubprocess.exe"),
+    os.path.normpath(r"C:\Program Files (x86)\Rise Mode Temp CPU Driver R2.1\Rise Mode Temp CPU Driver R2.1.exe"),
+    os.path.normpath(r"C:\Program Files (x86)\Rise Mode Temp CPU Driver R2.1\SendTemp.exe")
+}
+
+TRUSTED_FOLDERS = {
+    os.path.normpath(r"C:\Program Files\Lian-Li"),
+    os.path.normpath(r"C:\Program Files\Lian-Li\L-Connect 3"),
+    os.path.normpath(r"C:\Program Files\MongoDB"),
+    os.path.normpath(r"C:\Program Files\MongoDB\Server"),
+    os.path.normpath(r"C:\Program Files\MongoDB\Server\8.0"),
+    os.path.normpath(r"C:\Program Files\MongoDB\Server\8.0\bin"),
+    os.path.normpath(r"C:\Program Files (x86)\Rise Mode"),
+    os.path.normpath(r"C:\Program Files (x86)\Rise Mode Temp CPU Driver R2.1"),
 }
 
 WHITELIST_PY_NAMES = {"wolf", "wolfguard", "wolf5", "wolfguard_monitor"}
 SYSTEM_ROOT = os.environ.get("WINDIR", "C:\\Windows")
 PROGRAM_FILES = os.environ.get("PROGRAMFILES", "C:\\Program Files")
 PROGRAM_FILES_X86 = os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)")
+STARTUP_REG_PATH = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 
 SYSTEM_DIRS = {
     os.path.normpath(SYSTEM_ROOT),
@@ -58,6 +101,10 @@ SYSTEM_DIRS = {
     os.path.normpath(os.path.join(SYSTEM_ROOT,"System32\\wbem")),
     os.path.normpath(os.path.join(PROGRAM_FILES,"Windows Defender")),
     os.path.normpath(os.path.join(PROGRAM_FILES,"Windows Security")),
+    os.path.normpath(os.path.join(SYSTEM_ROOT,"WindowsApps")),
+    os.path.normpath(os.path.join(PROGRAM_FILES,"WindowsApps")),
+    os.path.normpath(os.path.join(PROGRAM_FILES_X86,"WindowsApps")),
+    os.path.normpath(os.path.join(SYSTEM_ROOT,"AppReadiness"))
 }
 
 WHITELISTED_PATHS = {
@@ -89,17 +136,67 @@ DEFAULT_CFG = {
     "auto_scan_enabled": True,
     "scan_user_focus": True,
     "aggressive_mode": True,
-    "scan_interval": 5
+    "scan_interval": 5,
+    "auto_start": False
 }
 
 MUTEX_NAME = "Global\\WolfGuard_AntiRansom_SingleInstance"
 WM_TOGGLE = 0x8000 + 1
 WM_SHOW = 0x8000 + 2
 
-# Cache global para assinaturas (muito mais rápido)
 SIGNATURE_CACHE = {}
 CACHE_LOCK = threading.Lock()
 MAX_CACHE_SIZE = 10000
+
+def set_high_priority():
+    try:
+        process = psutil.Process(os.getpid())
+        process.nice(psutil.HIGH_PRIORITY_CLASS)
+    except:
+        pass
+
+def enable_autostart():
+    try:
+        exe_path = os.path.abspath(sys.argv[0])
+        if exe_path.lower().endswith(".py"):
+            cmd = f'"{sys.executable}" "{exe_path}" --autostart'
+        else:
+            cmd = f'"{exe_path}" --autostart'
+        
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REG_PATH, 0, 
+                           winreg.KEY_WRITE)
+        winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, cmd)
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        return False
+
+def disable_autostart():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REG_PATH, 0,
+                           winreg.KEY_WRITE)
+        try:
+            winreg.DeleteValue(key, APP_NAME)
+        except:
+            pass
+        winreg.CloseKey(key)
+        return True
+    except:
+        return False
+
+def is_autostart_enabled():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, STARTUP_REG_PATH, 0,
+                           winreg.KEY_READ)
+        try:
+            value, _ = winreg.QueryValueEx(key, APP_NAME)
+            winreg.CloseKey(key)
+            return True
+        except:
+            winreg.CloseKey(key)
+            return False
+    except:
+        return False
 
 def ensure_admin():
     try:
@@ -154,43 +251,70 @@ def norm(p):
     except:
         return ""
 
-def is_whitelisted(path):
-    if not path: return True
+def is_in_trusted_folder(path):
+    if not path: 
+        return False
     path_norm = norm(path)
-    if path_norm in WHITELISTED_PATHS: return True
+    for folder in TRUSTED_FOLDERS:
+        if path_norm == folder or path_norm.startswith(folder + os.sep):
+            return True
+    return False
+
+def is_specific_trusted_path(path):
+    if not path:
+        return False
+    path_norm = norm(path)
+    return path_norm in SPECIFIC_TRUSTED_PATHS
+
+def is_whitelisted(path):
+    if not path: 
+        return True
+    path_norm = norm(path)
+    if path_norm in WHITELISTED_PATHS: 
+        return True
     name = os.path.basename(path).lower()
-    if name in WHITELIST_EXE_NAMES: return True
+    if name in WHITELIST_EXE_NAMES: 
+        return True
     stem = os.path.splitext(name)[0]
-    if stem in WHITELIST_PY_NAMES: return True
+    if stem in WHITELIST_PY_NAMES: 
+        return True
+    if is_specific_trusted_path(path):
+        return True
+    if is_in_trusted_folder(path):
+        return True
     return False
 
 def is_under_system(path):
     p = norm(path)
-    if not p: return False
-    if is_whitelisted(p): return True
+    if not p: 
+        return False
+    if is_whitelisted(p): 
+        return True
     for s in SYSTEM_DIRS:
         if p == norm(s) or p.startswith(norm(s)+os.sep):
             return True
     return False
 
 def is_signed_exe_cached(filepath):
-    """Verificação ultra-rápida com cache"""
-    if not filepath or not os.path.exists(filepath): return False
-    if is_whitelisted(filepath): return True
-    if is_under_system(filepath): return True
+    if not filepath or not os.path.exists(filepath): 
+        return False
+    if is_whitelisted(filepath): 
+        return True
+    if is_under_system(filepath): 
+        return True
+    if is_specific_trusted_path(filepath): 
+        return True
+    if is_in_trusted_folder(filepath):
+        return True
     
-    # Cache check
     with CACHE_LOCK:
         if filepath in SIGNATURE_CACHE:
             return SIGNATURE_CACHE[filepath]
     
-    # Verificação real
     result = is_signed_exe_fast(filepath)
     
-    # Armazena no cache
     with CACHE_LOCK:
         if len(SIGNATURE_CACHE) >= MAX_CACHE_SIZE:
-            # Remove 20% mais antigos
             to_remove = list(SIGNATURE_CACHE.keys())[:MAX_CACHE_SIZE // 5]
             for k in to_remove:
                 del SIGNATURE_CACHE[k]
@@ -199,9 +323,16 @@ def is_signed_exe_cached(filepath):
     return result
 
 def is_signed_exe_fast(filepath):
-    if not os.path.exists(filepath): return False
-    if is_whitelisted(filepath): return True
-    if is_under_system(filepath): return True
+    if not os.path.exists(filepath): 
+        return False
+    if is_whitelisted(filepath): 
+        return True
+    if is_under_system(filepath): 
+        return True
+    if is_specific_trusted_path(filepath): 
+        return True
+    if is_in_trusted_folder(filepath): 
+        return True
     
     try:
         wintrust = ctypes.WinDLL("wintrust.dll")
@@ -235,7 +366,6 @@ def is_signed_exe_fast(filepath):
         return False
 
 def kill_process_ultra_fast(pid):
-    """Kill instantâneo usando TerminateProcess direto"""
     try:
         PROCESS_TERMINATE = 0x0001
         handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
@@ -246,7 +376,6 @@ def kill_process_ultra_fast(pid):
     except:
         pass
     
-    # Fallback para psutil
     try:
         p=psutil.Process(pid)
         p.kill()
@@ -286,7 +415,6 @@ def get_download_dirs():
     return list(dirs)
 
 def get_all_drives():
-    """Retorna todas as unidades de disco"""
     drives = []
     try:
         bitmask = ctypes.windll.kernel32.GetLogicalDrives()
@@ -307,6 +435,8 @@ class MonitorEvents(FileSystemEventHandler):
     def _handle(self,path):
         if not os.path.isfile(path): return
         if is_under_system(path): return
+        if is_specific_trusted_path(path): return
+        if is_in_trusted_folder(path): return
         
         now = time.time()
         if path in self.cache and now - self.cache[path] < 1:
@@ -372,8 +502,7 @@ class ScanThread(QThread):
                     for root, dirs, files in os.walk(base_path):
                         if not self.running: break
                         
-                        # Pula pastas do sistema
-                        if is_under_system(root):
+                        if is_under_system(root) or is_in_trusted_folder(root):
                             dirs.clear()
                             continue
                         
@@ -394,7 +523,6 @@ class ScanThread(QThread):
                 except:
                     continue
             
-            # Processa restantes
             for f in as_completed(futures):
                 if f.result():
                     removed += 1
@@ -407,10 +535,13 @@ class ScanThread(QThread):
                 return False
             if is_under_system(filepath):
                 return False
+            if is_specific_trusted_path(filepath):
+                return False
+            if is_in_trusted_folder(filepath):
+                return False
             if is_signed_exe_cached(filepath):
                 return False
             
-            # Não assinado - REMOVER
             self.core.delete_file(filepath)
             self.core.blocked_signal.emit(f"REMOVIDO: {filepath}")
             return True
@@ -421,7 +552,6 @@ class ScanThread(QThread):
         self.running = False
 
 class FocusMonitor(QThread):
-    """Monitora onde o usuário está focado e scanneia automaticamente"""
     focus_changed = Signal(str)
     
     def __init__(self, core):
@@ -438,7 +568,6 @@ class FocusMonitor(QThread):
                     time.sleep(1)
                     continue
                 
-                # Pega janela ativa
                 if win32gui:
                     hwnd = win32gui.GetForegroundWindow()
                     if hwnd:
@@ -448,15 +577,13 @@ class FocusMonitor(QThread):
                             exe_path = proc.exe()
                             current_dir = os.path.dirname(exe_path)
                             
-                            # Se mudou de pasta e não é sistema
-                            if current_dir != self.last_path and not is_under_system(current_dir):
+                            if current_dir != self.last_path and not is_under_system(current_dir) and not is_in_trusted_folder(current_dir):
                                 if current_dir not in self.scan_cache:
                                     self.last_path = current_dir
                                     self.focus_changed.emit(current_dir)
                                     self.scan_directory_fast(current_dir)
                                     self.scan_cache.add(current_dir)
                                     
-                                    # Limita cache
                                     if len(self.scan_cache) > 100:
                                         self.scan_cache.clear()
                         except:
@@ -467,13 +594,12 @@ class FocusMonitor(QThread):
             time.sleep(2)
     
     def scan_directory_fast(self, directory):
-        """Scan rápido da pasta em foco"""
         try:
             for file in os.listdir(directory):
                 if not self.running: break
                 filepath = os.path.join(directory, file)
                 if os.path.isfile(filepath) and filepath.lower().endswith('.exe'):
-                    if not is_whitelisted(filepath) and not is_signed_exe_cached(filepath):
+                    if not is_whitelisted(filepath) and not is_signed_exe_cached(filepath) and not is_specific_trusted_path(filepath) and not is_in_trusted_folder(filepath):
                         self.core.block_and_log("DETECTADO NO FOCO", filepath, delete=False)
         except:
             pass
@@ -504,14 +630,13 @@ class Core(QObject):
             self.cleaner_thread=threading.Thread(target=self.periodic_cleanup, daemon=True)
             self.cleaner_thread.start()
         
-        # Monitor de foco do usuário
         if self.cfg.get("scan_user_focus", True):
             self.focus_monitor = FocusMonitor(self)
             self.focus_monitor.focus_changed.connect(lambda p: self.blocked_signal.emit(f"Monitorando: {p}"))
             self.focus_monitor.start()
         
     def is_whitelisted_path(self, path):
-        return is_whitelisted(path)
+        return is_whitelisted(path) or is_specific_trusted_path(path) or is_in_trusted_folder(path)
         
     def is_legit_system_script(self, cmdline):
         p = extract_script_path(cmdline, ["ps1","bat","cmd","vbs","js","py"])
@@ -523,6 +648,8 @@ class Core(QObject):
         if self.is_whitelisted_path(exe_path): return False
         if is_under_system(exe_path): return False
         if self.is_legit_system_script(cmdline): return False
+        if is_specific_trusted_path(exe_path): return False
+        if is_in_trusted_folder(exe_path): return False
         
         name = os.path.basename(exe_path).lower()
         
@@ -588,7 +715,6 @@ class Core(QObject):
                     cmd = proc.CommandLine or ""
                     pid = proc.ProcessId
                     
-                    # Cache ultra-rápido
                     now = time.time()
                     cache_key = f"{path}:{pid}"
                     if cache_key in self.process_cache and now - self.process_cache[cache_key] < 2:
@@ -596,8 +722,10 @@ class Core(QObject):
                     
                     self.process_cache[cache_key] = now
                     
+                    if is_specific_trusted_path(path) or is_in_trusted_folder(path):
+                        continue
+                        
                     if self.should_block_exec(path, cmd):
-                        # KILL INSTANTÂNEO - modo agressivo
                         if self.cfg.get("aggressive_mode", True):
                             self.terminate_pid(pid)
                         
@@ -629,6 +757,10 @@ class Core(QObject):
         try:
             exe=p.info.get("exe") or ""
             cmd=" ".join(p.info.get("cmdline") or [])
+            
+            if is_specific_trusted_path(exe) or is_in_trusted_folder(exe):
+                return
+                
             if self.should_block_exec(exe, cmd):
                 if self.cfg.get("kill_running_offenders",True):
                     self.block_and_log("ENCERRADO", exe or p.info.get("name",""), 
@@ -687,7 +819,6 @@ class FancyWindow(QWidget):
     def build_ui(self):
         root=QVBoxLayout(self); root.setContentsMargins(14,14,14,14); root.setSpacing(10)
         
-        # Header
         title=QHBoxLayout()
         logo=QLabel(); pix=icon_pixmap(32)
         logo.setPixmap(pix)
@@ -700,11 +831,10 @@ class FancyWindow(QWidget):
         title.addWidget(btn_close)
         root.addLayout(title)
         
-        # Status
         status_frame = QFrame()
         status_frame.setStyleSheet("QFrame{background:rgba(0,255,136,25);border-radius:8px;padding:8px;}")
         status_layout = QHBoxLayout(status_frame)
-        self.status_label = QLabel("PROTECAO ATIVA")
+        self.status_label = QLabel("PROTEÇÃO ATIVA")
         self.status_label.setStyleSheet("font-size:14px; font-weight:600; color:#00ff88;")
         status_layout.addWidget(self.status_label)
         root.addWidget(status_frame)
@@ -721,16 +851,15 @@ class FancyWindow(QWidget):
         self.tab_down=QWidget()
         self.tab_scan=QWidget()
         
-        tabs.addTab(self.tab_cfg,"Configuracoes")
+        tabs.addTab(self.tab_cfg,"Configurações")
         tabs.addTab(self.tab_mon,"Monitoramento")
         tabs.addTab(self.tab_down,"Downloads")
         tabs.addTab(self.tab_scan,"Varredura")
         inner.addWidget(tabs)
         
-        # Tab Configurações
         g=QGridLayout(self.tab_cfg); g.setContentsMargins(8,8,8,8); g.setHorizontalSpacing(14); g.setVerticalSpacing(10)
         
-        label_exec = QLabel("PROTECAO DE EXECUCAO:")
+        label_exec = QLabel("PROTEÇÃO DE EXECUÇÃO:")
         label_exec.setStyleSheet("font-weight:700; font-size:13px; color:#00ff88;")
         g.addWidget(label_exec, 0, 0, 1, 2)
         
@@ -745,31 +874,33 @@ class FancyWindow(QWidget):
         for i,w in enumerate([self.ck_unsigned,self.ck_js,self.ck_ps1,self.ck_cmd,self.ck_bat,self.ck_vbs,self.ck_py]):
             g.addWidget(w, i+1, 0, 1, 2)
         
-        label_adv = QLabel("MODO AVANCADO:")
+        label_adv = QLabel("MODO AVANÇADO:")
         label_adv.setStyleSheet("font-weight:700; font-size:13px; color:#ff8800; margin-top:10px;")
         g.addWidget(label_adv, 9, 0, 1, 2)
         
         self.ck_kill=QCheckBox("Encerrar processos maliciosos automaticamente")
-        self.ck_aggressive=QCheckBox("Modo Agressivo (kill instantaneo)")
-        self.ck_auto_scan=QCheckBox("Varredura automatica ativa")
-        self.ck_scan_focus=QCheckBox("Monitorar pasta em foco do usuario")
+        self.ck_aggressive=QCheckBox("Modo Agressivo (kill instantâneo)")
+        self.ck_auto_scan=QCheckBox("Varredura automática ativa")
+        self.ck_scan_focus=QCheckBox("Monitorar pasta em foco do usuário")
+        self.ck_auto_start=QCheckBox("Iniciar com Windows (prioridade máxima)")
         
-        for i,w in enumerate([self.ck_kill,self.ck_aggressive,self.ck_auto_scan,self.ck_scan_focus]):
+        for i,w in enumerate([self.ck_kill,self.ck_aggressive,self.ck_auto_scan,self.ck_scan_focus,self.ck_auto_start]):
             g.addWidget(w, 10+i, 0, 1, 2)
         
+        self.ck_auto_start.clicked.connect(self.toggle_autostart)
+        
         btns=QHBoxLayout()
-        self.bt_save=QPushButton("Salvar Configuracao")
+        self.bt_save=QPushButton("Salvar Configuração")
         self.bt_apply=QPushButton("Aplicar Agora")
         for b in [self.bt_save,self.bt_apply]:
             b.setStyleSheet("QPushButton{background:#1a60ff;border:0;border-radius:10px;padding:12px 16px;font-weight:600;}QPushButton:hover{background:#2a70ff;}")
             btns.addWidget(b)
         btns.addStretch()
-        g.addLayout(btns,14,0,1,2)
+        g.addLayout(btns,16,0,1,2)
         
         self.bt_save.clicked.connect(self.on_save)
         self.bt_apply.clicked.connect(self.on_apply)
         
-        # Tab Monitoramento
         m=QVBoxLayout(self.tab_mon); m.setContentsMargins(8,8,8,8)
         self.list_mon=QListWidget(); 
         self.list_mon.setStyleSheet("QListWidget{background:rgba(0,0,0,80);color:#00ff88;border:1px solid rgba(0,255,136,30);border-radius:8px;font-family:Consolas,monospace;}")
@@ -787,10 +918,9 @@ class FancyWindow(QWidget):
         self.bt_clear.clicked.connect(self.list_mon.clear)
         self.bt_refresh.clicked.connect(self.on_manual_scan)
         
-        # Tab Downloads
         d=QGridLayout(self.tab_down); d.setContentsMargins(8,8,8,8); d.setHorizontalSpacing(14); d.setVerticalSpacing=10
         
-        label_down = QLabel("PROTECAO DE DOWNLOADS:")
+        label_down = QLabel("PROTEÇÃO DE DOWNLOADS:")
         label_down.setStyleSheet("font-weight:700; font-size:13px; color:#00ff88;")
         d.addWidget(label_down, 0, 0, 1, 2)
         
@@ -809,17 +939,21 @@ class FancyWindow(QWidget):
         info.setStyleSheet("color:#aaaaaa; margin-top:10px;")
         d.addWidget(info, 9, 0, 1, 2)
         
-        # Tab Varredura
         s=QVBoxLayout(self.tab_scan); s.setContentsMargins(8,8,8,8); s.setSpacing(12)
         
         scan_label = QLabel("VARREDURA COMPLETA DO SISTEMA")
         scan_label.setStyleSheet("font-size:16px; font-weight:700; color:#00ff88;")
         s.addWidget(scan_label)
         
-        scan_info = QLabel("Remove automaticamente TODOS os executaveis nao assinados\nem todas as unidades de disco (exceto arquivos do sistema).")
+        scan_info = QLabel("Remove automaticamente TODOS os executáveis não assinados\nem todas as unidades de disco (exceto arquivos do sistema).")
         scan_info.setStyleSheet("color:#cccccc; margin-bottom:10px;")
         scan_info.setWordWrap(True)
         s.addWidget(scan_info)
+        
+        trusted_info = QLabel("Aplicativos confiáveis protegidos: L-Connect 3, Rise Mode Temp CPU Driver, MongoDB")
+        trusted_info.setStyleSheet("color:#00ff88; margin-bottom:10px;")
+        trusted_info.setWordWrap(True)
+        s.addWidget(trusted_info)
         
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("QProgressBar{background:rgba(0,0,0,60);border:1px solid rgba(0,255,136,40);border-radius:8px;text-align:center;color:#ffffff;height:28px;} QProgressBar::chunk{background:#00ff88;border-radius:6px;}")
@@ -832,7 +966,7 @@ class FancyWindow(QWidget):
         
         scan_btns = QHBoxLayout()
         
-        self.bt_scan_quick = QPushButton("Varredura Rapida\n(Downloads, Desktop, Documentos)")
+        self.bt_scan_quick = QPushButton("Varredura Rápida\n(Downloads, Desktop, Documentos)")
         self.bt_scan_full = QPushButton("Varredura Completa\n(Todas as unidades)")
         self.bt_scan_stop = QPushButton("Parar")
         self.bt_scan_stop.setEnabled(False)
@@ -848,15 +982,26 @@ class FancyWindow(QWidget):
         self.bt_scan_full.clicked.connect(self.start_full_scan)
         self.bt_scan_stop.clicked.connect(self.stop_scan)
         
-        # Footer
         foot=QHBoxLayout()
-        lab=QLabel("F3 para mostrar/ocultar")
+        lab=QLabel("F3 para mostrar/ocultar | Mateus Kalil")
         lab.setStyleSheet("color:#888888;")
         foot.addWidget(lab); foot.addStretch()
         inner.addLayout(foot)
         
         self.dragging=False
         self.offset=None
+    
+    def toggle_autostart(self):
+        if self.ck_auto_start.isChecked():
+            success = enable_autostart()
+            if not success:
+                self.add_monitor_line("Erro ao configurar inicialização automática.")
+                self.ck_auto_start.setChecked(False)
+            else:
+                self.add_monitor_line("Inicialização automática configurada com sucesso.")
+        else:
+            disable_autostart()
+            self.add_monitor_line("Inicialização automática desativada.")
         
     def mousePressEvent(self, event):
         if event.button()==Qt.LeftButton:
@@ -883,7 +1028,6 @@ class FancyWindow(QWidget):
         self.list_mon.addItem(QListWidgetItem(time.strftime("[%H:%M:%S] ") + text))
         self.list_mon.scrollToBottom()
         
-        # Mantém apenas últimas 1000 linhas
         if self.list_mon.count() > 1000:
             self.list_mon.takeItem(0)
         
@@ -908,6 +1052,9 @@ class FancyWindow(QWidget):
         self.dk_vbs.setChecked(c.get("downloads_block_vbs",True))
         self.dk_py.setChecked(c.get("downloads_block_py",False))
         
+        is_auto_start = is_autostart_enabled()
+        self.ck_auto_start.setChecked(is_auto_start)
+        
     def pull_ui_to_cfg(self):
         c=self.core.cfg
         c["block_unsigned_exe"]=self.ck_unsigned.isChecked()
@@ -928,29 +1075,30 @@ class FancyWindow(QWidget):
         c["downloads_block_bat"]=self.dk_bat.isChecked()
         c["downloads_block_vbs"]=self.dk_vbs.isChecked()
         c["downloads_block_py"]=self.dk_py.isChecked()
+        c["auto_start"]=self.ck_auto_start.isChecked()
         
     def on_save(self):
         self.pull_ui_to_cfg()
         save_cfg(self.core.cfg)
-        self.add_monitor_line("Configuracao salva com sucesso!")
+        self.add_monitor_line("Configuração salva com sucesso!")
         
     def on_apply(self):
         self.pull_ui_to_cfg()
         save_cfg(self.core.cfg)
         self.on_manual_scan()
-        self.add_monitor_line("Configuracao aplicada e sistema verificado!")
+        self.add_monitor_line("Configuração aplicada e sistema verificado!")
     
     def on_manual_scan(self):
-        self.add_monitor_line("Iniciando verificacao manual...")
+        self.add_monitor_line("Iniciando verificação manual...")
         threading.Thread(target=self.core.scan_running_and_enforce, daemon=True).start()
     
     def start_quick_scan(self):
         paths = self.core.download_dirs
         if not paths:
-            self.scan_status.setText("Nenhuma pasta para scanear")
+            self.scan_status.setText("Nenhuma pasta para escanear")
             return
         
-        self.scan_status.setText("Iniciando varredura rapida...")
+        self.scan_status.setText("Iniciando varredura rápida...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.bt_scan_quick.setEnabled(False)
@@ -982,11 +1130,11 @@ class FancyWindow(QWidget):
     
     def update_scan_progress(self, removed, current_file):
         self.progress_bar.setValue(removed)
-        self.scan_status.setText(f"Removidos: {removed} | Scaneando: {os.path.basename(current_file)}")
+        self.scan_status.setText(f"Removidos: {removed} | Escaneando: {os.path.basename(current_file)}")
     
     def scan_finished(self, total_removed):
         self.progress_bar.setVisible(False)
-        self.scan_status.setText(f"Varredura concluida! Total removido: {total_removed} arquivo(s)")
+        self.scan_status.setText(f"Varredura concluída! Total removido: {total_removed} arquivo(s)")
         self.bt_scan_quick.setEnabled(True)
         self.bt_scan_full.setEnabled(True)
         self.bt_scan_stop.setEnabled(False)
@@ -1069,7 +1217,7 @@ class TrayController(QObject):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
             try:
-                self.tray.showMessage("WolfGuard", "Protecao antiransom ativa. Use F3 para mostrar/ocultar.", QSystemTrayIcon.Information, 3000)
+                self.tray.showMessage("WolfGuard", "Proteção antiransomware ativa. Use F3 para mostrar/ocultar.", QSystemTrayIcon.Information, 3000)
             except:
                 pass
             
@@ -1106,9 +1254,14 @@ def load_app_icon():
     return QIcon(pm)
 
 def main():
+    set_high_priority()
     ensure_admin()
+    
+    is_autostart = "--autostart" in sys.argv
+    
     _ = create_single_instance_or_signal()
     cfg=load_cfg()
+    
     app=QApplication(sys.argv)
     app.setWindowIcon(load_app_icon())
     core=Core(cfg)
@@ -1116,9 +1269,11 @@ def main():
     tray=TrayController(ui)
     hotkey_listener = HotkeyListener(ui.toggle_visibility)
     
-    ui.showNormal()
-    ui.activateWindow()
-    ui.raise_()
+    if not is_autostart:
+        ui.showNormal()
+        ui.activateWindow()
+        ui.raise_()
+    
     sys.exit(app.exec())
 
 if __name__=="__main__":
