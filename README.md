@@ -46,6 +46,8 @@ O **WolfGuard Antivírus** é uma suíte de cibersegurança moderna para **Windo
 
 ## ✨ Destaques
 
+- **Assinatura Digital & Proteção Instantânea:** verificação via WinTrust/Assinatura de Código com cache de confiança, bloqueando executáveis não assinados ou com cadeia inválida no exato momento da criação/execução.
+- **Bloqueio de Downloads:** monitoramento contínuo de pastas (Downloads, Área de Trabalho, Documentos, Imagens); remoção/quarentena automática de scripts conforme política, e bloqueio imediato de EXEs não assinados assim que chegam ao disco.
 - **Defesa em Profundidade**: múltiplos motores operando em camadas (kernel/API nativa + aplicação).  
 - **Honeypot Inteligente**: detecção precoce por arquivos‑isca e **lockdown** (desligar rede + ejetar USB) com atalho de recuperação.  
 - **Análise Estática + ML**: inspeção PE + classificação assistida para *zero‑day like* (documentado na apresentação).  
