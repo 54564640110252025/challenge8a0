@@ -258,6 +258,9 @@ Itens ficam na quarentena para análise e restauração opcional.
 Este repositório/documentação está sob **Licença Proprietária**.  
 Solicite autorização por escrito antes de redistribuir ou reutilizar partes deste conteúdo.
 
----
+## Arquivos .py
+st.py = launcher
+wolf.py = Antivírus versão safe
+wolf5.py = Antivírus versão Avançada
 
-> *Este README consolida o relatório técnico, a apresentação oficial e o inventário real de funcionalidades do código‑fonte (`wolf.py`/`wolf5.py`).*
+> *Este README consolida o relatório técnico, a apresentação oficial e o inventário real de funcionalidades do código‑fonte (`wolf.py`/`wolf5.py`/`st.py`).*
