@@ -200,7 +200,7 @@ Local: `%APPDATA%\WolfGuard\antiransom_config.json`
 
 ## 🧪 Resultados de Testes
 
-- **Cenário**: laboratório controlado por **PRIDE Security** e **Prof. Fabio Silva Pires de Oliveira**.  
+- **Cenário**: laboratório controlado por **PRIDE Security** e **Prof. Fabio**.  
 - **Amostras**: **8** variantes de **ransomware**.  
 - **Resultado**: **8–0** a favor do **WolfGuard** (todas neutralizadas **antes** de dano persistente).
 
